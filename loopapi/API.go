@@ -59,7 +59,14 @@ func (loopEn *LoopEnergy) Connect() bool {
 	}
 
 	err = c.On(gosocketio.OnConnection, func(h *gosocketio.Channel) {
-		log.Println("Connected")
+		log.Println("Connected to loop")
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = c.On("disconnect", func(h *gosocketio.Channel) {
+		log.Println("Disconnected")
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -71,7 +78,7 @@ func (loopEn *LoopEnergy) Connect() bool {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	
 	var msg connectMessage
 
 	msg.clientIP = "127.0.0.1"
@@ -79,7 +86,8 @@ func (loopEn *LoopEnergy) Connect() bool {
 	msg.serial = loopEn.Config.Serial
 
 	c.Emit("subscribe_electric_realtime",msg)
-	//client.Emit("subscribe_electric_realtime", "{ 'serial': "+loopEn.Config.Serial+",'clientIp': '127.0.0.1','secret': "+loopEn.Config.Secret+"}")
+	
+	
 
 	time.Sleep(10 * time.Second)
 	
