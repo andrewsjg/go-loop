@@ -3,8 +3,11 @@ package loopapi
 import (
 	"log"
 	"os"
+	"time"
 
-	socketio_client "github.com/zhouhui8915/go-socket.io-client"
+	//socketio_client "github.com/zhouhui8915/go-socket.io-client"
+	"github.com/graarh/golang-socketio"
+	"github.com/graarh/golang-socketio/transport"
 )
 
 type config struct {
@@ -18,6 +21,13 @@ type LoopEnergy struct {
 	Config config
 }
 
+type connectMessage struct {
+	serial		string	`json:"serial"`
+	secret  	string  `json:"secret"`
+	clientIP 	string  `json:"clientIp"`
+
+}
+
 // NewLoopEnergy - Initializes a new LoopEnergy object
 func NewLoopEnergy() LoopEnergy {
 	var theLoop LoopEnergy
@@ -26,7 +36,7 @@ func NewLoopEnergy() LoopEnergy {
 	// Setup the config
 	// TODO: probably read these from a config file
 	cfg.LoopPort = 443
-	cfg.LoopServer = "https://www.your-loop.com"
+	cfg.LoopServer = "www.your-loop.com"
 
 	// Secret and Serial read from the environment
 	cfg.Secret = os.Getenv("LOOPSECRET")
@@ -41,27 +51,37 @@ func NewLoopEnergy() LoopEnergy {
 func (loopEn *LoopEnergy) Connect() bool {
 	log.Println("Connecting")
 
-	opts := &socketio_client.Options{
-		Transport: "websocket",
-		Query:     make(map[string]string),
-	}
-	opts.Query["serial"] = loopEn.Config.Serial
-	opts.Query["secret"] = loopEn.Config.Secret
-
-	client, err := socketio_client.NewClient(loopEn.Config.LoopServer, opts)
+	c, err := gosocketio.Dial(
+		gosocketio.GetUrl(loopEn.Config.LoopServer, loopEn.Config.LoopPort, true),
+		transport.GetDefaultWebsocketTransport())
 	if err != nil {
-		log.Printf("NewClient error:%v\n", err)
-		return false
+		log.Fatal(err)
 	}
 
-	client.On("electric_realtime", func() {
-		log.Printf("on electric_realtime\n")
+	err = c.On(gosocketio.OnConnection, func(h *gosocketio.Channel) {
+		log.Println("Connected")
 	})
-
-	client.Emit("subscribe_gas_interval", "{ 'serial': "+loopEn.Config.Serial+",'clientIp': '127.0.0.1','secret': "+loopEn.Config.Secret+"}")
-
-	for {
-		log.Println("Listening")
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	err = c.On("electric_realtime", func(h *gosocketio.Channel) {
+		log.Println("Got Electric Data")
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var msg connectMessage
+
+	msg.clientIP = "127.0.0.1"
+	msg.secret = loopEn.Config.Secret
+	msg.serial = loopEn.Config.Serial
+
+	c.Emit("subscribe_electric_realtime",msg)
+	//client.Emit("subscribe_electric_realtime", "{ 'serial': "+loopEn.Config.Serial+",'clientIp': '127.0.0.1','secret': "+loopEn.Config.Secret+"}")
+
+	time.Sleep(10 * time.Second)
+	
 	return true
 }
