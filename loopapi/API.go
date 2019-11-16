@@ -6,7 +6,7 @@ import (
 	"time"
 
 	//socketio_client "github.com/zhouhui8915/go-socket.io-client"
-	"github.com/graarh/golang-socketio"
+	gosocketio "github.com/graarh/golang-socketio"
 	"github.com/graarh/golang-socketio/transport"
 )
 
@@ -21,11 +21,19 @@ type LoopEnergy struct {
 	Config config
 }
 
-type connectMessage struct {
-	serial		string	`json:"serial"`
-	secret  	string  `json:"secret"`
-	clientIP 	string  `json:"clientIp"`
+type RequestMessage struct {
+	Serial   string `json:"serial"`
+	Secret   string `json:"secret"`
+	ClientIP string `json:"clientIp"`
+}
 
+//{"lqi":43,"rssi":-92,"deviceTimestamp":1573945716,"inst":1660,"serial":"53e8"}
+type ElecDataMessage struct {
+	Lqi             int    `json:"lqi"`
+	Rssi            int    `json:"rssi"`
+	DeviceTimeStamp int    `json:"deviceTimestamp"`
+	Inst            int    `json:"inst"`
+	Serial          string `json:"serial"`
 }
 
 // NewLoopEnergy - Initializes a new LoopEnergy object
@@ -72,24 +80,47 @@ func (loopEn *LoopEnergy) Connect() bool {
 		log.Fatal(err)
 	}
 
-	err = c.On("electric_realtime", func(h *gosocketio.Channel) {
+	err = c.On("electric_realtime", func(h *gosocketio.Channel, args ElecDataMessage) {
 		log.Println("Got Electric Data")
+		//log.Println(args)
+
+		currentUsage := float32(args.Inst) / 1000.0
+		log.Printf("Current Usage (kW): %.3f ", currentUsage)
+
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	
-	var msg connectMessage
 
-	msg.clientIP = "127.0.0.1"
-	msg.secret = loopEn.Config.Secret
-	msg.serial = loopEn.Config.Serial
+	/*
+		var msg connectMessage
 
-	c.Emit("subscribe_electric_realtime",msg)
-	
-	
+		msg.clientIP = "127.0.0.1"
+		msg.secret = loopEn.Config.Secret
+		msg.serial = loopEn.Config.Serial
 
-	time.Sleep(10 * time.Second)
-	
+		c.Emit("subscribe_electric_realtime",msg)
+	*/
+
+	time.Sleep(1 * time.Second)
+	go subElec(c, loopEn.Config.Secret, loopEn.Config.Serial)
+
+	time.Sleep(30 * time.Second)
+
 	return true
+}
+
+func subElec(c *gosocketio.Client, secret string, serial string) {
+	var msg RequestMessage
+	msg.ClientIP = "127.0.0.1"
+	msg.Secret = secret
+	msg.Serial = serial
+
+	//result,err := c.Ack("subscribe_electric_realtime",msg, 5 * time.Second)
+	err := c.Emit("subscribe_electric_realtime", msg)
+
+	if err != nil {
+		log.Fatal("Emit ERRROR: " + err.Error())
+	}
+	log.Println("Waiting for Data")
 }
