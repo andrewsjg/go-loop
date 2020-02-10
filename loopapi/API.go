@@ -1,9 +1,7 @@
 package loopapi
 
 import (
-	"log"
-	"os"
-	"time"
+	log "github.com/sirupsen/logrus"
 
 	//socketio_client "github.com/zhouhui8915/go-socket.io-client"
 	gosocketio "github.com/graarh/golang-socketio"
@@ -11,14 +9,19 @@ import (
 )
 
 type config struct {
-	LoopServer string
-	LoopPort   int
-	Serial     string
-	Secret     string
+	loopServer string
+	loopPort   int
+	serial     string
+	secret     string
 }
 
 type LoopEnergy struct {
-	Config config
+	config
+	Connected bool
+	Client    *gosocketio.Client
+	stop      chan bool
+
+	Electricty float32
 }
 
 type RequestMessage struct {
@@ -37,37 +40,41 @@ type ElecDataMessage struct {
 }
 
 // NewLoopEnergy - Initializes a new LoopEnergy object
-func NewLoopEnergy() LoopEnergy {
+func NewLoopEnergy(serial, secret, loopServer string, loopPort int) LoopEnergy {
 	var theLoop LoopEnergy
-	var cfg config
 
 	// Setup the config
-	// TODO: probably read these from a config file
-	cfg.LoopPort = 443
-	cfg.LoopServer = "www.your-loop.com"
+	theLoop.loopPort = loopPort
+	theLoop.loopServer = loopServer
 
-	// Secret and Serial read from the environment
-	cfg.Secret = os.Getenv("LOOPSECRET")
-	cfg.Serial = os.Getenv("LOOPSERIAL")
+	theLoop.stop = make(chan bool)
 
-	theLoop.Config = cfg
+	theLoop.serial = serial
+	theLoop.secret = secret
+
+	theLoop.Connected = false
+
+	// Set logging
+	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+
+	log.SetLevel(log.InfoLevel)
 
 	return theLoop
 }
 
 // Connect - Connect to the LOOP API Endpoint
-func (loopEn *LoopEnergy) Connect() bool {
-	log.Println("Connecting")
+func (loopEn *LoopEnergy) connect() {
+	log.Info("Connecting")
 
 	c, err := gosocketio.Dial(
-		gosocketio.GetUrl(loopEn.Config.LoopServer, loopEn.Config.LoopPort, true),
+		gosocketio.GetUrl(loopEn.loopServer, loopEn.loopPort, true),
 		transport.GetDefaultWebsocketTransport())
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	err = c.On(gosocketio.OnConnection, func(h *gosocketio.Channel) {
-		log.Println("Connected to loop")
+		log.Info("Connected to loop")
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -75,17 +82,22 @@ func (loopEn *LoopEnergy) Connect() bool {
 
 	err = c.On("disconnect", func(h *gosocketio.Channel) {
 		log.Println("Disconnected")
+		loopEn.Connected = false
+		loopEn.stop <- true
+
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	err = c.On("electric_realtime", func(h *gosocketio.Channel, args ElecDataMessage) {
-		log.Println("Got Electric Data")
+		log.Debug("Got Electric Data")
 		//log.Println(args)
 
 		currentUsage := float32(args.Inst) / 1000.0
-		log.Printf("Current Usage (kW): %.3f ", currentUsage)
+		loopEn.Electricty = currentUsage
+
+		log.Debug("Current Usage (kW): ", currentUsage)
 
 	})
 	if err != nil {
@@ -93,21 +105,39 @@ func (loopEn *LoopEnergy) Connect() bool {
 	}
 
 	/*
-		var msg connectMessage
+		time.Sleep(1 * time.Second)
+		go subElec(c, loopEn.Config.Secret, loopEn.Config.Serial)
 
-		msg.clientIP = "127.0.0.1"
-		msg.secret = loopEn.Config.Secret
-		msg.serial = loopEn.Config.Serial
+		time.Sleep(30 * time.Second) */
 
-		c.Emit("subscribe_electric_realtime",msg)
-	*/
+	loopEn.Client = c
+	loopEn.Connected = true
 
-	time.Sleep(1 * time.Second)
-	go subElec(c, loopEn.Config.Secret, loopEn.Config.Serial)
+	var msg RequestMessage
+	msg.ClientIP = "127.0.0.1"
+	msg.Secret = loopEn.secret
+	msg.Serial = loopEn.serial
 
-	time.Sleep(30 * time.Second)
+	err = c.Emit("subscribe_electric_realtime", msg)
 
+	// Block on the signal channel
+loop:
+
+	for {
+		select {
+		case <-loopEn.stop: // triggered when the stop channel is closed
+			break loop // exit
+		}
+	}
+}
+
+func (loopEn *LoopEnergy) Connect() bool {
+	go loopEn.connect()
 	return true
+}
+
+func (loopEn *LoopEnergy) Disconnect() {
+	loopEn.stop <- true
 }
 
 func subElec(c *gosocketio.Client, secret string, serial string) {
@@ -122,5 +152,5 @@ func subElec(c *gosocketio.Client, secret string, serial string) {
 	if err != nil {
 		log.Fatal("Emit ERRROR: " + err.Error())
 	}
-	log.Println("Waiting for Data")
+	log.Debug("Waiting for Data")
 }
