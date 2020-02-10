@@ -25,7 +25,7 @@ func main() {
 			if loopEn.Electricty != lastElec {
 				lastElec = loopEn.Electricty
 
-				fmt.Println("Elec: ", loopEn.Electricty)
+				fmt.Println("Elec:", loopEn.Electricty)
 			}
 
 		}

@@ -81,7 +81,7 @@ func (loopEn *LoopEnergy) connect() {
 	}
 
 	err = c.On("disconnect", func(h *gosocketio.Channel) {
-		log.Println("Disconnected")
+		log.Info("Disconnected")
 		loopEn.Connected = false
 		loopEn.stop <- true
 
@@ -97,7 +97,7 @@ func (loopEn *LoopEnergy) connect() {
 		currentUsage := float32(args.Inst) / 1000.0
 		loopEn.Electricty = currentUsage
 
-		log.Debug("Current Usage (kW): ", currentUsage)
+		log.Debug("Current Usage (kW):", currentUsage)
 
 	})
 	if err != nil {
