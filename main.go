@@ -22,12 +22,15 @@ func main() {
 	for {
 		if loopEn.Connected {
 			time.Sleep(1 * time.Second)
+
 			if loopEn.Electricty != lastElec {
 				lastElec = loopEn.Electricty
 
 				fmt.Println("Elec:", loopEn.Electricty)
-			}
+				//loopEn.Disconnect()
 
+			}
 		}
 	}
+
 }
