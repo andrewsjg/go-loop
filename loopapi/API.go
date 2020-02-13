@@ -13,10 +13,13 @@ import (
 type config struct {
 	loopServer string
 	loopPort   int
-	serial     string
-	secret     string
+	elecSerial string
+	elecSecret string
+	gasSerial  string
+	gasSecret  string
 }
 
+// LoopEnergy is the main container for data from Loop and the client
 type LoopEnergy struct {
 	config
 	Connected bool
@@ -26,13 +29,14 @@ type LoopEnergy struct {
 	Electricty float32
 }
 
+//RequestMessage is the data structure used sending the serial and secret along with the subscription requests
 type RequestMessage struct {
 	Serial   string `json:"serial"`
 	Secret   string `json:"secret"`
 	ClientIP string `json:"clientIp"`
 }
 
-//{"lqi":43,"rssi":-92,"deviceTimestamp":1573945716,"inst":1660,"serial":"53e8"}
+//ElecDataMessage is the message returned from Loop
 type ElecDataMessage struct {
 	Lqi             int    `json:"lqi"`
 	Rssi            int    `json:"rssi"`
@@ -42,7 +46,7 @@ type ElecDataMessage struct {
 }
 
 // NewLoopEnergy - Initializes a new LoopEnergy object
-func NewLoopEnergy(serial, secret, loopServer string, loopPort int) LoopEnergy {
+func NewLoopEnergy(elecSerial, elecSecret, gasSerial, gasSecret, loopServer string, loopPort int) LoopEnergy {
 	var theLoop LoopEnergy
 
 	// Setup the config
@@ -51,14 +55,16 @@ func NewLoopEnergy(serial, secret, loopServer string, loopPort int) LoopEnergy {
 
 	theLoop.stop = make(chan bool)
 
-	theLoop.serial = serial
-	theLoop.secret = secret
+	theLoop.elecSerial = elecSerial
+	theLoop.elecSecret = elecSecret
+
+	theLoop.gasSecret = gasSecret
+	theLoop.gasSerial = gasSerial
 
 	theLoop.Connected = false
 
 	// Set logging
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
-
 	log.SetLevel(log.DebugLevel)
 
 	return theLoop
@@ -82,18 +88,19 @@ func (loopEn *LoopEnergy) connect(wg *sync.WaitGroup) {
 	err = c.On(gosocketio.OnConnection, func(h *gosocketio.Channel) {
 		log.Info("Connected to loop")
 
-		msg := RequestMessage{loopEn.serial, loopEn.secret, "127.0.0.1"}
-		/*var msg RequestMessage
-		msg.ClientIP = "127.0.0.1"
-		msg.Secret = loopEn.secret
-		msg.Serial = loopEn.serial */
-
+		// Subscribe to electricity readings
+		msg := RequestMessage{loopEn.elecSerial, loopEn.elecSecret, "127.0.0.1"}
 		emitErr := c.Emit("subscribe_electric_realtime", msg)
 
 		// Change this!
 		if emitErr != nil {
 			log.Fatal(err)
 		}
+
+		// Subscribe to gas readings
+		//msg := RequestMessage{loopEn.gasSerial, loopEn.gasSecret, "127.0.0.1"}
+		//emitErr := c.Emit("subscribe_gas_interval", msg)
+
 	})
 
 	if err != nil {
@@ -141,6 +148,7 @@ loop:
 	}
 }
 
+//Connect connects to Loop and subscribes to the channels for data
 func (loopEn *LoopEnergy) Connect() bool {
 
 	wg := &sync.WaitGroup{}
@@ -151,6 +159,8 @@ func (loopEn *LoopEnergy) Connect() bool {
 	return true
 }
 
+// Disconnect from loop. Terminates the client and send a message to the stop channel to
+// terminate the goroutine running the client
 func (loopEn *LoopEnergy) Disconnect() {
 	loopEn.client.Close()
 	loopEn.stop <- true
