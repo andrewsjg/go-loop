@@ -11,10 +11,11 @@ import (
 func main() {
 
 	// Get the serial and secret from the environment
-	SECRET := os.Getenv("LOOPSECRET")
-	SERIAL := os.Getenv("LOOPSERIAL")
+	ELECSECRET := os.Getenv("LOOPELECSECRET")
+	ELECSERIAL := os.Getenv("LOOPELECSERIAL")
 
-	loopEn := loopapi.NewLoopEnergy(SERIAL, SECRET, "www.your-loop.com", 443)
+	// No Gas Secret or serial provided. I dont have one to test with!
+	loopEn := loopapi.NewLoopEnergy(ELECSERIAL, ELECSECRET, "", "", "www.your-loop.com", 443)
 	loopEn.Connect()
 
 	var lastElec float32
@@ -28,7 +29,7 @@ func main() {
 
 				fmt.Println("Elec:", loopEn.Electricty)
 				//loopEn.Disconnect()
-
+				//break
 			}
 		}
 	}
